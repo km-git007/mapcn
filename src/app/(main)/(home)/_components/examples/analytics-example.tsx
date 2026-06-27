@@ -31,30 +31,30 @@ export function AnalyticsExample() {
         </div>
         <div className="text-2xl leading-tight font-semibold">3,544</div>
         <div className="mt-1 flex items-center gap-1">
-          <TrendingUp className="size-3 text-emerald-500" />
-          <span className="text-xs text-emerald-500">+12.5%</span>
+          <TrendingUp className="size-3" />
+          <span className="text-foreground text-xs">+12.5%</span>
           <span className="text-muted-foreground text-xs">vs last hour</span>
         </div>
       </div>
 
-      <Map center={[0, 30]}>
+      <Map
+        center={[0, 30]}
+        scrollZoom={false}
+        dragRotate={false}
+        pitchWithRotate={false}
+      >
         {analyticsData.map((loc) => (
           <MapMarker key={loc.city} longitude={loc.lng} latitude={loc.lat}>
             <MarkerContent>
               <div
-                className="rounded-full bg-emerald-500/80 shadow-sm"
+                className="rounded-full bg-blue-500/80 shadow-sm"
                 style={{ width: loc.size * 1.8, height: loc.size * 1.8 }}
               />
             </MarkerContent>
             <MarkerTooltip>
               <div className="text-center">
                 <div className="font-medium">{loc.city}</div>
-                <div className="font-semibold text-emerald-400">
-                  {loc.users}
-                </div>
-                <div className="text-background/70 text-[10px]">
-                  active users
-                </div>
+                <div className="text-background/80">{loc.users} users</div>
               </div>
             </MarkerTooltip>
           </MapMarker>

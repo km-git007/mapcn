@@ -21,7 +21,7 @@ export function FlyToExample() {
     setActiveIndex(index);
     mapRef.current?.flyTo({
       center: destinations[index].center,
-      zoom: 4.5,
+      zoom: 6,
       duration: 2000,
       essential: true,
     });
@@ -31,12 +31,18 @@ export function FlyToExample() {
 
   return (
     <ExampleCard className="aspect-square" stagger={6}>
-      <Map ref={mapRef} center={active.center} zoom={4.5}>
+      <Map
+        ref={mapRef}
+        center={active.center}
+        zoom={5.5}
+        scrollZoom={false}
+        dragRotate={false}
+        pitchWithRotate={false}
+      >
         <MapMarker longitude={active.center[0]} latitude={active.center[1]}>
           <MarkerContent>
-            <div className="relative flex items-center justify-center">
-              <div className="absolute size-6 animate-ping rounded-full bg-blue-500/30" />
-              <div className="size-3 rounded-full border-2 border-white bg-blue-500 shadow-lg" />
+            <div className="flex items-center justify-center">
+              <div className="size-3.5 rounded-full border-2 border-white bg-blue-500 shadow-lg" />
             </div>
           </MarkerContent>
         </MapMarker>

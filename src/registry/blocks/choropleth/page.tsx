@@ -114,7 +114,6 @@ export default function Page() {
         maxZoom={mapConfig.view.maxZoom}
         dragRotate={false}
         pitchWithRotate={false}
-        attributionControl={false}
         loading={!countries}
       >
         {countries && (

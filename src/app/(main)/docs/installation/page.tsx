@@ -6,11 +6,10 @@ import {
   DocsSection,
 } from "../_components/docs";
 import { CodeBlock } from "../_components/code-block";
+import { InstallCommand } from "../_components/install-command";
 import { Metadata } from "next";
 import { Card } from "@/components/ui/card";
 import { Map, MapControls } from "@/registry/map";
-
-const installCommand = "npx shadcn@latest add @mapcn/map";
 
 const usageCode = `import { Map, MapControls } from "@/components/ui/map";
 import { Card } from "@/components/ui/card";
@@ -58,7 +57,7 @@ export default function InstallationPage() {
 
       <DocsSection title="Installation">
         <p>Run the following command to add the map component:</p>
-        <CodeBlock code={installCommand} language="bash" />
+        <InstallCommand name="@mapcn/map" />
         <p>
           This will install <DocsCode>maplibre-gl</DocsCode> and add the map
           component to your project.

@@ -23,13 +23,14 @@ export function EdgeNodeMarker({ node }: EdgeNodeMarkerProps) {
           />
         </div>
       </MarkerContent>
-      <MarkerTooltip offset={10} className="bg-popover min-w-28 border p-2">
+      <MarkerTooltip
+        offset={10}
+        className="bg-popover text-popover-foreground min-w-28 border p-2"
+      >
         <div className="flex items-center gap-1.5">
           <span className={cn("size-1.5 rounded-full", meta.dot)} />
-          <span className="text-foreground text-[11px] font-medium">
-            {node.city}
-          </span>
-          <span className="text-muted-foreground ml-auto font-mono text-[10px] uppercase">
+          <span className="text-[11px] font-medium">{node.city}</span>
+          <span className="text-muted-foreground ml-auto font-mono text-[11px] uppercase">
             {node.id}
           </span>
         </div>

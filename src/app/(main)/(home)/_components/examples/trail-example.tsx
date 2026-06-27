@@ -1,7 +1,7 @@
 "use client";
 
 import { Map, MapRoute, MapMarker, MarkerContent } from "@/registry/map";
-import { Bike, Flame, Clock, Route } from "lucide-react";
+import { Bike } from "lucide-react";
 import { ExampleCard } from "./example-card";
 
 // Central Park cycling route
@@ -28,32 +28,23 @@ export function TrailExample() {
     <ExampleCard className="aspect-square" stagger={5}>
       <div className="bg-background/95 border-border/50 absolute top-3 left-3 z-10 rounded-lg border p-3 shadow-lg backdrop-blur-md">
         <div className="mb-2 flex items-center gap-1.5">
-          <Bike className="size-3.5 text-emerald-500" />
+          <Bike className="text-foreground size-3.5" />
           <span className="text-xs font-medium">Central Park Loop</span>
         </div>
         <div className="grid grid-cols-3 gap-3 text-center">
           <div>
-            <div className="text-muted-foreground mb-0.5 flex items-center justify-center gap-1">
-              <Route className="size-3" />
-            </div>
             <div className="text-sm font-semibold">6.2</div>
             <div className="text-muted-foreground text-[9px] uppercase">
               Miles
             </div>
           </div>
           <div>
-            <div className="text-muted-foreground mb-0.5 flex items-center justify-center gap-1">
-              <Clock className="size-3" />
-            </div>
             <div className="text-sm font-semibold">32</div>
             <div className="text-muted-foreground text-[9px] uppercase">
               Mins
             </div>
           </div>
           <div>
-            <div className="text-muted-foreground mb-0.5 flex items-center justify-center gap-1">
-              <Flame className="size-3" />
-            </div>
             <div className="text-sm font-semibold">285</div>
             <div className="text-muted-foreground text-[9px] uppercase">
               Cal
@@ -62,10 +53,16 @@ export function TrailExample() {
         </div>
       </div>
 
-      <Map center={[-73.97, 40.782]} zoom={11.8}>
+      <Map
+        center={[-73.97, 40.782]}
+        zoom={11.8}
+        scrollZoom={false}
+        dragRotate={false}
+        pitchWithRotate={false}
+      >
         <MapRoute
           coordinates={trailCoordinates}
-          color="#10b981"
+          color="#3b82f6"
           width={3}
           opacity={0.9}
         />

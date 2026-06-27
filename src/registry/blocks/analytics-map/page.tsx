@@ -59,10 +59,12 @@ export default function Page() {
               </MarkerContent>
               <MarkerTooltip
                 offset={20}
-                className="bg-popover text-muted-foreground border"
+                className="bg-popover text-popover-foreground border"
               >
-                <p className="text-foreground font-medium">{location.city}</p>
-                <p className="mt-0.5">{location.size} active users</p>
+                <p className="font-medium">{location.city}</p>
+                <p className="text-muted-foreground mt-0.5">
+                  {location.size} active users
+                </p>
               </MarkerTooltip>
             </MapMarker>
           ))}

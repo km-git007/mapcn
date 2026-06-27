@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useTheme } from "next-themes";
 import { Clock3, Utensils, Truck, UserRound } from "lucide-react";
 
 import {
@@ -44,8 +45,8 @@ const deliveryMeals: DeliveryMeal[] = [
   },
 ];
 
-const pickup = { lng: -122.466, lat: 37.716 };
-const dropoff = { lng: -122.399, lat: 37.683 };
+const pickup = { lng: -122.4185, lat: 37.7645 };
+const dropoff = { lng: -122.434, lat: 37.7475 };
 
 function formatDistance(meters?: number) {
   if (!meters) return "--";
@@ -65,6 +66,8 @@ function formatDuration(seconds?: number) {
 export default function Page() {
   const [routeData, setRouteData] = useState<OsrmRouteData | null>(null);
   const [loading, setLoading] = useState(true);
+  const { resolvedTheme } = useTheme();
+  const remainingRouteColor = resolvedTheme === "dark" ? "#9ca3af" : "#6b7280";
 
   useEffect(() => {
     async function fetchRoute() {
@@ -186,17 +189,17 @@ export default function Page() {
         <div className="relative h-[400px] overflow-hidden rounded-xl shadow-sm md:h-full">
           <Map
             loading={loading}
-            center={[-122.435, 37.696]}
-            zoom={12}
+            center={[-122.4263, 37.756]}
+            zoom={13.6}
             minZoom={10}
             maxZoom={16}
           >
             <MapRoute
               id="delivery-full-route"
               coordinates={routeData?.coordinates ?? []}
-              color="#5b6572"
+              color={remainingRouteColor}
               width={5.2}
-              opacity={0.3}
+              opacity={0.5}
               interactive={false}
             />
             <MapRoute
@@ -215,7 +218,7 @@ export default function Page() {
                 offset={[0, 10]}
               >
                 <MarkerContent>
-                  <div className="relative grid size-9 place-items-center rounded-full bg-emerald-500 dark:bg-emerald-600">
+                  <div className="relative grid size-9 place-items-center rounded-full border-2 border-white bg-blue-500 shadow-md dark:bg-blue-600">
                     <Truck className="size-4 text-white" />
                   </div>
                 </MarkerContent>

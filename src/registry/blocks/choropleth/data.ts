@@ -44,7 +44,7 @@ interface ChoroplethColors {
 /**
  * Central map config — colors, the value→color scale, and the initial view.
  * WebGL paint can't read CSS variables, so colors are concrete values per
- * theme. The ramp is a single-hue blue scale tuned for contrast on each
+ * theme. The ramp is a single-hue grayscale scale tuned for contrast on each
  * theme's basemap.
  */
 export const mapConfig = {

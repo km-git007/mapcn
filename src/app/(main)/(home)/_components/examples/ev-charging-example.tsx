@@ -118,7 +118,13 @@ const statusConfig: Record<
 export function EVChargingExample() {
   return (
     <ExampleCard className="aspect-square" stagger={7}>
-      <Map center={[-122.434, 37.776]} zoom={11}>
+      <Map
+        center={[-122.434, 37.776]}
+        zoom={11}
+        scrollZoom={false}
+        dragRotate={false}
+        pitchWithRotate={false}
+      >
         {stations.map((station) => {
           const config = statusConfig[station.status];
           return (
@@ -132,15 +138,15 @@ export function EVChargingExample() {
                   <Zap className="size-3 fill-white text-white" />
                 </div>
               </MarkerContent>
-              <MarkerTooltip>
-                <div className="space-y-0.5 text-xs">
+              <MarkerTooltip className="bg-popover text-popover-foreground border px-2.5 py-1.5">
+                <div className="space-y-1 text-xs">
                   <div className="font-medium">{station.name}</div>
                   <div className="flex items-center gap-1">
                     <span className={`size-1.5 rounded-full ${config.bg}`} />
                     <span className={config.textClass}>{config.label}</span>
                   </div>
                   {station.detail && (
-                    <div className="text-background/60 text-[11px]">
+                    <div className="text-muted-foreground text-[11px]">
                       {station.detail}
                     </div>
                   )}
