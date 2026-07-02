@@ -70,7 +70,7 @@ export const usersPerDay = [
 export const usersPerDayChartConfig = {
   users: {
     label: "Users",
-    color: "var(--chart-1)",
+    color: "var(--chart-2)",
   },
 } satisfies ChartConfig;
 

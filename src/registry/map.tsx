@@ -1273,9 +1273,10 @@ type MapGeoJSONProps<
    */
   fillPaint?: MapFillPaint | false;
   /**
-   * Paint for the outline layer. Merged on top of a theme-aware hairline
-   * default (`line-color` = page background, `line-width` = 0.5). Pass `false`
-   * to omit the outline layer.
+   * Paint for the outline layer. Merged on top of a hairline default
+   * (`line-color` = a near-surface neutral, `line-width` = 0.5) for thin
+   * separators. Override `line-color` if your container differs, or pass
+   * `false` to omit the layer.
    */
   linePaint?: MapLinePaint | false;
   /**
@@ -1293,9 +1294,9 @@ type MapGeoJSONProps<
   beforeId?: string;
 };
 
-// Theme-aware monochrome defaults so MapGeoJSON reads
-// clearly on the light/dark surface out of the box: a visible neutral-gray fill
-// with page-background separators between shapes. Override either via
+// Monochrome defaults: a neutral-gray fill (hex of the grayscale chart tokens)
+// with a fixed near-surface line for thin separators. Colors are hardcoded (not
+// theme tokens), tuned for a typical light/dark surface. Override via
 // `fillPaint` / `linePaint`.
 const GEOJSON_DEFAULT_COLORS = {
   light: { fill: "#d4d4d4", line: "#ffffff" },

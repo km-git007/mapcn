@@ -42,13 +42,13 @@ export const mapConfig = {
   scaleStops: [0, 25, 50, 75, 100] as const,
   colors: {
     light: {
-      base: "#eef0f3",
-      ramp: ["#d4d4d4", "#737373", "#525252", "#404040"],
+      base: "#f0f0f0",
+      ramp: ["#d4d4d4", "#a3a3a3", "#737373", "#404040"],
       hover: "#0a0a0a",
     },
     dark: {
       base: "#2a2a2a",
-      ramp: ["#404040", "#525252", "#737373", "#d4d4d4"],
+      ramp: ["#404040", "#737373", "#a3a3a3", "#d4d4d4"],
       hover: "#ffffff",
     },
   } satisfies Record<Theme, ChoroplethColors>,

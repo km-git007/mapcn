@@ -2,51 +2,22 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useTheme } from "next-themes";
-import { Clock3, Utensils, Truck, UserRound } from "lucide-react";
+import { Clock3, House, Store, Utensils, Truck, UserRound } from "lucide-react";
 
-import {
-  Map,
-  MapMarker,
-  MapRoute,
-  MarkerContent,
-  MarkerTooltip,
-} from "@/registry/map";
+import { Map, MapMarker, MapRoute, MarkerContent } from "@/registry/map";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-
-interface DeliveryMeal {
-  name: string;
-  price: string;
-  quantity: number;
-}
-
-interface OsrmRouteData {
-  coordinates: [number, number][];
-  duration: number;
-  distance: number;
-}
-
-const deliveryMeals: DeliveryMeal[] = [
-  {
-    name: "Spicy Tofu Grain Bowl",
-    price: "$44.00",
-    quantity: 1,
-  },
-  {
-    name: "Herb Chicken Rice Box",
-    price: "$58.00",
-    quantity: 2,
-  },
-  {
-    name: "Roasted Veggie Wrap",
-    price: "$29.00",
-    quantity: 1,
-  },
-];
-
-const pickup = { lng: -122.4185, lat: 37.7645 };
-const dropoff = { lng: -122.434, lat: 37.7475 };
+import {
+  buildRouteUrl,
+  deliveryMeals,
+  dropoff,
+  mapView,
+  pickup,
+  progressFraction,
+  routeStyle,
+  type OsrmRouteData,
+} from "./data";
 
 function formatDistance(meters?: number) {
   if (!meters) return "--";
@@ -67,15 +38,16 @@ export default function Page() {
   const [routeData, setRouteData] = useState<OsrmRouteData | null>(null);
   const [loading, setLoading] = useState(true);
   const { resolvedTheme } = useTheme();
-  const remainingRouteColor = resolvedTheme === "dark" ? "#9ca3af" : "#6b7280";
+  const remainingRouteColor =
+    resolvedTheme === "dark"
+      ? routeStyle.remaining.color.dark
+      : routeStyle.remaining.color.light;
 
   useEffect(() => {
     async function fetchRoute() {
       setLoading(true);
       try {
-        const response = await fetch(
-          `https://router.project-osrm.org/route/v1/driving/${pickup.lng},${pickup.lat};${dropoff.lng},${dropoff.lat}?overview=full&geometries=geojson`,
-        );
+        const response = await fetch(buildRouteUrl(pickup, dropoff));
         const data = await response.json();
         const route = data?.routes?.[0];
         if (!route?.geometry?.coordinates) return;
@@ -96,12 +68,8 @@ export default function Page() {
   }, []);
 
   const progressCoordinates = useMemo(() => {
-    const progressCount = Math.max(
-      2,
-      Math.floor(
-        (routeData?.coordinates?.length ?? 0) * (routeData ? 0.62 : 0.66),
-      ),
-    );
+    const total = routeData?.coordinates?.length ?? 0;
+    const progressCount = Math.max(2, Math.floor(total * progressFraction));
     return routeData?.coordinates?.slice(0, progressCount) ?? [];
   }, [routeData]);
 
@@ -169,6 +137,10 @@ export default function Page() {
                 </p>
                 <p className="text-sm font-medium">
                   {formatDuration(routeData?.duration)}
+                  <span className="text-muted-foreground font-normal">
+                    {" · "}
+                    {formatDistance(routeData?.distance)}
+                  </span>
                 </p>
               </CardContent>
             </Card>
@@ -189,25 +161,25 @@ export default function Page() {
         <div className="relative h-[450px] overflow-hidden rounded-xl shadow-sm md:h-full">
           <Map
             loading={loading}
-            center={[-122.4263, 37.756]}
-            zoom={13.6}
-            minZoom={12}
-            maxZoom={15}
+            center={mapView.center}
+            zoom={mapView.zoom}
+            minZoom={mapView.minZoom}
+            maxZoom={mapView.maxZoom}
           >
             <MapRoute
               id="delivery-full-route"
               coordinates={routeData?.coordinates ?? []}
               color={remainingRouteColor}
-              width={5.2}
-              opacity={0.5}
+              width={routeStyle.remaining.width}
+              opacity={routeStyle.remaining.opacity}
               interactive={false}
             />
             <MapRoute
               id="delivery-progress-route"
               coordinates={progressCoordinates}
-              color="#3b82f6"
-              width={6}
-              opacity={0.95}
+              color={routeStyle.progress.color}
+              width={routeStyle.progress.width}
+              opacity={routeStyle.progress.opacity}
               interactive={false}
             />
 
@@ -218,35 +190,34 @@ export default function Page() {
                 offset={[0, 10]}
               >
                 <MarkerContent>
-                  <div className="relative grid size-9 place-items-center rounded-full bg-blue-500 shadow-md dark:bg-blue-600">
+                  <div
+                    className="relative grid size-9 place-items-center rounded-full shadow-md"
+                    style={{ backgroundColor: routeStyle.progress.color }}
+                  >
                     <Truck className="size-4 text-white" />
+                    <div className="bg-popover text-popover-foreground absolute bottom-full left-1/2 mb-2.5 -translate-x-1/2 rounded-md border px-2 py-1 text-xs font-medium whitespace-nowrap shadow-md">
+                      {formatDuration(routeData?.duration)} away
+                      <span className="bg-popover absolute top-full left-1/2 size-2 -translate-x-1/2 -translate-y-1/2 rotate-45 border-r border-b" />
+                    </div>
                   </div>
                 </MarkerContent>
-                <MarkerTooltip>
-                  <div className="space-y-0.5 text-xs">
-                    <p className="font-medium">
-                      Order {formatDuration(routeData?.duration)} away
-                    </p>
-                    <p className="text-background/70">
-                      Route {formatDistance(routeData?.distance)}
-                    </p>
-                  </div>
-                </MarkerTooltip>
               </MapMarker>
             )}
 
             <MapMarker longitude={pickup.lng} latitude={pickup.lat}>
               <MarkerContent>
-                <div className="size-4 rounded-full border-2 border-white bg-emerald-500 shadow-sm" />
+                <div className="grid size-7 place-items-center rounded-full bg-emerald-500 shadow-md">
+                  <Store className="size-3.5 text-white" />
+                </div>
               </MarkerContent>
-              <MarkerTooltip>Origin</MarkerTooltip>
             </MapMarker>
 
             <MapMarker longitude={dropoff.lng} latitude={dropoff.lat}>
               <MarkerContent>
-                <div className="size-4 rounded-full border-2 border-white bg-rose-500 shadow-sm" />
+                <div className="grid size-7 place-items-center rounded-full bg-rose-500 shadow-md">
+                  <House className="size-3.5 text-white" />
+                </div>
               </MarkerContent>
-              <MarkerTooltip>Destination</MarkerTooltip>
             </MapMarker>
           </Map>
         </div>
