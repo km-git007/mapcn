@@ -47,7 +47,7 @@ export function ComponentPreviewClient({
           html={highlightedCode}
         />
         {!expanded && (
-          <div className="from-background to-background/0 absolute inset-x-0 bottom-0 flex w-full items-center justify-center bg-linear-to-t pt-16 pb-6">
+          <div className="from-surface to-surface/0 absolute inset-x-0 bottom-0 flex w-full items-center justify-center bg-linear-to-t pt-16 pb-6">
             <Button
               variant="outline"
               size="sm"

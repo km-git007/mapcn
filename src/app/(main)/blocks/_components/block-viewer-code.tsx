@@ -108,7 +108,7 @@ function FileTreeSidebar() {
 
   return (
     <SidebarProvider className="flex min-h-full! flex-col border-r">
-      <Sidebar collapsible="none" className="bg-card w-full flex-1">
+      <Sidebar collapsible="none" className="w-full flex-1">
         <SidebarGroupLabel className="h-12 rounded-none border-b px-4 text-sm">
           Files
         </SidebarGroupLabel>

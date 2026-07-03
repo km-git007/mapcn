@@ -16,7 +16,7 @@ export async function CodeBlock({
   const highlighted = await highlightCode(code, language);
 
   return (
-    <div className="relative w-full overflow-hidden rounded-lg border">
+    <div className="relative w-full overflow-hidden rounded-lg">
       {showCopyButton && (
         <div className="absolute top-2 right-2 z-10">
           <CodeCopyButton text={code} />
