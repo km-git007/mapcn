@@ -1,13 +1,12 @@
 "use client";
 
 import * as React from "react";
-import { Check, ChevronRight, Copy, File, Folder } from "lucide-react";
+import { ChevronRight, File, Folder } from "lucide-react";
 import {
   Collapsible,
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
-import { Button } from "@/components/ui/button";
 import {
   Sidebar,
   SidebarGroup,
@@ -21,6 +20,8 @@ import {
 } from "@/components/ui/sidebar";
 import { type FileTree } from "@/lib/blocks";
 import { trackEvent } from "@/lib/events";
+import { CodeSurface } from "@/components/code-surface";
+import { CodeCopyButton } from "@/components/code-copy-button";
 
 export interface HighlightedFile {
   path: string;
@@ -77,16 +78,24 @@ export function BlockViewerCode({
           <FileTreeSidebar />
         </div>
         <div className="flex min-w-0 flex-1 flex-col">
-          <div className="bg-code flex h-12 shrink-0 items-center gap-2 border-b px-4 text-sm">
+          <div className="bg-surface flex h-12 shrink-0 items-center gap-2 border-b px-4 text-sm">
             <span className="text-muted-foreground">{file.target}</span>
             <div className="ml-auto">
-              <CopyCodeButton />
+              <CodeCopyButton
+                text={file.content}
+                onCopy={() =>
+                  trackEvent({
+                    name: "copy_block_code",
+                    properties: { file: file.target },
+                  })
+                }
+              />
             </div>
           </div>
-          <div
+          <CodeSurface
             key={file.path}
-            dangerouslySetInnerHTML={{ __html: file.highlightedContent }}
-            className="bg-code no-scrollbar flex-1 overflow-x-auto p-4 text-sm"
+            html={file.highlightedContent}
+            className="flex-1 overflow-x-auto"
           />
         </div>
       </div>
@@ -171,35 +180,5 @@ function TreeNode({ item, index }: { item: FileTree; index: number }) {
         </CollapsibleContent>
       </Collapsible>
     </SidebarMenuItem>
-  );
-}
-
-function CopyCodeButton() {
-  const { activeFile, highlightedFiles } = useBlockViewerCode();
-  const [copied, setCopied] = React.useState(false);
-
-  const file = React.useMemo(
-    () => highlightedFiles.find((f) => f.target === activeFile),
-    [highlightedFiles, activeFile],
-  );
-
-  if (!file) return null;
-
-  return (
-    <Button
-      variant="ghost"
-      size="icon-sm"
-      onClick={async () => {
-        await navigator.clipboard.writeText(file.content);
-        setCopied(true);
-        setTimeout(() => setCopied(false), 2000);
-        trackEvent({
-          name: "copy_block_code",
-          properties: { file: file.target },
-        });
-      }}
-    >
-      {copied ? <Check /> : <Copy />}
-    </Button>
   );
 }

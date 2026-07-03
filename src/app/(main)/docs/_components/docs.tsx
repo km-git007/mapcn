@@ -136,7 +136,7 @@ interface DocsNoteProps {
 
 export function DocsNote({ children }: DocsNoteProps) {
   return (
-    <div className="bg-code text-foreground/80 [&_strong]:text-foreground rounded-lg border px-5 py-4 text-[15px] leading-relaxed [&_strong]:font-medium">
+    <div className="bg-surface text-foreground/80 [&_strong]:text-foreground rounded-lg border px-5 py-4 text-[15px] leading-relaxed [&_strong]:font-medium">
       {children}
     </div>
   );

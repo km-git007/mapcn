@@ -1,5 +1,6 @@
 import { highlightCode } from "@/lib/highlight";
-import { CopyButton } from "./copy-button";
+import { CodeSurface } from "@/components/code-surface";
+import { CodeCopyButton } from "@/components/code-copy-button";
 
 interface CodeBlockProps {
   code: string;
@@ -18,13 +19,10 @@ export async function CodeBlock({
     <div className="relative w-full overflow-hidden rounded-lg border">
       {showCopyButton && (
         <div className="absolute top-2 right-2 z-10">
-          <CopyButton text={code} />
+          <CodeCopyButton text={code} />
         </div>
       )}
-      <div
-        className="bg-code no-scrollbar overflow-auto p-4 text-sm"
-        dangerouslySetInnerHTML={{ __html: highlighted }}
-      />
+      <CodeSurface className="overflow-auto" html={highlighted} />
     </div>
   );
 }

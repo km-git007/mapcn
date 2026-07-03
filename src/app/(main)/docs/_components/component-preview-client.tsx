@@ -3,7 +3,8 @@
 import { useId, useState } from "react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-import { CopyButton } from "./copy-button";
+import { CodeSurface } from "@/components/code-surface";
+import { CodeCopyButton } from "@/components/code-copy-button";
 
 interface ComponentPreviewClientProps {
   children: React.ReactNode;
@@ -34,17 +35,16 @@ export function ComponentPreviewClient({
 
       <div className="relative w-full overflow-hidden rounded-lg border">
         <div className="absolute top-2 right-2 z-10">
-          <CopyButton text={code} />
+          <CodeCopyButton text={code} />
         </div>
-        <div
+        <CodeSurface
           id={codeId}
           className={cn(
-            "bg-code no-scrollbar p-4 text-sm",
             expanded
               ? "max-h-[420px] overflow-x-auto"
               : "max-h-42 overflow-hidden",
           )}
-          dangerouslySetInnerHTML={{ __html: highlightedCode }}
+          html={highlightedCode}
         />
         {!expanded && (
           <div className="from-background to-background/0 absolute inset-x-0 bottom-0 flex w-full items-center justify-center bg-linear-to-t pt-16 pb-6">
