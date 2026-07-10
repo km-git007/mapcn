@@ -126,6 +126,8 @@ function useResolvedTheme(themeProp?: "light" | "dark"): Theme {
 type MapContextValue = {
   map: MapLibreGL.Map | null;
   isLoaded: boolean;
+  /** Increments each time a basemap style becomes ready to use. */
+  styleEpoch: number;
   resolvedTheme: Theme;
 };
 
@@ -216,6 +218,68 @@ function getViewport(map: MapLibreGL.Map): MapViewport {
   };
 }
 
+/**
+ * Wait until the map style is ready for source/layer operations.
+ * Invariant: armed → post-arm `styledata` (unless allowImmediate) →
+ * `isStyleLoaded()` → `onReady` once → unsubscribe.
+ * After `setStyle`, never pass `allowImmediate`: `isStyleLoaded()` can still
+ * be true for the previous style before the swap progresses.
+ */
+function subscribeStyleReady(
+  map: MapLibreGL.Map,
+  onReady: () => void,
+  options?: { allowImmediate?: boolean },
+): () => void {
+  let settled = false;
+  let seenStyledata = false;
+  let cancelled = false;
+  let rafId: number | null = null;
+
+  function cancelScheduledCheck() {
+    if (rafId != null) {
+      cancelAnimationFrame(rafId);
+      rafId = null;
+    }
+  }
+
+  function finish() {
+    if (cancelled || settled) return;
+    settled = true;
+    cancelScheduledCheck();
+    map.off("styledata", onStyleData);
+    onReady();
+  }
+
+  function scheduleCheck() {
+    if (cancelled || settled || rafId != null) return;
+    rafId = requestAnimationFrame(() => {
+      rafId = null;
+      check();
+    });
+  }
+
+  function check() {
+    if (cancelled || settled) return;
+    if (!seenStyledata && !options?.allowImmediate) return;
+    if (map.isStyleLoaded()) finish();
+    else scheduleCheck();
+  }
+
+  function onStyleData() {
+    seenStyledata = true;
+    check();
+  }
+
+  map.on("styledata", onStyleData);
+  if (options?.allowImmediate) check();
+
+  return () => {
+    cancelled = true;
+    cancelScheduledCheck();
+    map.off("styledata", onStyleData);
+  };
+}
+
 const Map = forwardRef<MapRef, MapProps>(function Map(
   {
     children,
@@ -235,8 +299,9 @@ const Map = forwardRef<MapRef, MapProps>(function Map(
   const [mapInstance, setMapInstance] = useState<MapLibreGL.Map | null>(null);
   const [isLoaded, setIsLoaded] = useState(false);
   const [isStyleLoaded, setIsStyleLoaded] = useState(false);
+  const [styleEpoch, setStyleEpoch] = useState(0);
   const currentStyleRef = useRef<MapStyleOption | null>(null);
-  const styleTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const styleReadyUnsubscribeRef = useRef<(() => void) | null>(null);
   const internalUpdateRef = useRef(false);
   const resolvedTheme = useResolvedTheme(themeProp);
 
@@ -244,6 +309,9 @@ const Map = forwardRef<MapRef, MapProps>(function Map(
 
   const onViewportChangeRef = useRef(onViewportChange);
   onViewportChangeRef.current = onViewportChange;
+
+  const projectionRef = useRef(projection);
+  projectionRef.current = projection;
 
   const mapStyles = useMemo(() => {
     // Explicit styles win. Otherwise `blank` opts into the transparent
@@ -263,12 +331,31 @@ const Map = forwardRef<MapRef, MapProps>(function Map(
   // Expose the map instance to the parent component
   useImperativeHandle(ref, () => mapInstance as MapLibreGL.Map, [mapInstance]);
 
-  const clearStyleTimeout = useCallback(() => {
-    if (styleTimeoutRef.current) {
-      clearTimeout(styleTimeoutRef.current);
-      styleTimeoutRef.current = null;
+  const cancelStyleReadyWait = useCallback(() => {
+    styleReadyUnsubscribeRef.current?.();
+    styleReadyUnsubscribeRef.current = null;
+  }, []);
+
+  const markStyleReady = useCallback((map: MapLibreGL.Map) => {
+    setIsStyleLoaded(true);
+    setStyleEpoch((epoch) => epoch + 1);
+    const nextProjection = projectionRef.current;
+    if (nextProjection) {
+      map.setProjection(nextProjection);
     }
   }, []);
+
+  const armStyleReady = useCallback(
+    (map: MapLibreGL.Map, options?: { allowImmediate?: boolean }) => {
+      cancelStyleReadyWait();
+      styleReadyUnsubscribeRef.current = subscribeStyleReady(
+        map,
+        () => markStyleReady(map),
+        options,
+      );
+    },
+    [cancelStyleReadyWait, markStyleReady],
+  );
 
   // Initialize the map
   useEffect(() => {
@@ -289,18 +376,6 @@ const Map = forwardRef<MapRef, MapProps>(function Map(
       ...viewport,
     });
 
-    const styleDataHandler = () => {
-      clearStyleTimeout();
-      // Delay to ensure style is fully processed before allowing layer operations
-      // This is a workaround to avoid race conditions with the style loading
-      // else we have to force update every layer on setStyle change
-      styleTimeoutRef.current = setTimeout(() => {
-        setIsStyleLoaded(true);
-        if (projection) {
-          map.setProjection(projection);
-        }
-      }, 100);
-    };
     const loadHandler = () => setIsLoaded(true);
 
     // Viewport change handler - skip if triggered by internal update
@@ -310,14 +385,13 @@ const Map = forwardRef<MapRef, MapProps>(function Map(
     };
 
     map.on("load", loadHandler);
-    map.on("styledata", styleDataHandler);
     map.on("move", handleMove);
+    armStyleReady(map, { allowImmediate: true });
     setMapInstance(map);
 
     return () => {
-      clearStyleTimeout();
+      cancelStyleReadyWait();
       map.off("load", loadHandler);
-      map.off("styledata", styleDataHandler);
       map.off("move", handleMove);
       map.remove();
       setIsLoaded(false);
@@ -364,12 +438,19 @@ const Map = forwardRef<MapRef, MapProps>(function Map(
 
     if (currentStyleRef.current === newStyle) return;
 
-    clearStyleTimeout();
+    cancelStyleReadyWait();
     currentStyleRef.current = newStyle;
     setIsStyleLoaded(false);
 
     mapInstance.setStyle(newStyle, { diff: true });
-  }, [mapInstance, resolvedTheme, mapStyles, clearStyleTimeout]);
+    armStyleReady(mapInstance);
+  }, [
+    mapInstance,
+    resolvedTheme,
+    mapStyles,
+    cancelStyleReadyWait,
+    armStyleReady,
+  ]);
 
   // Sync projection when the prop changes after mount.
   useEffect(() => {
@@ -381,9 +462,10 @@ const Map = forwardRef<MapRef, MapProps>(function Map(
     () => ({
       map: mapInstance,
       isLoaded: isLoaded && isStyleLoaded,
+      styleEpoch,
       resolvedTheme,
     }),
-    [mapInstance, isLoaded, isStyleLoaded, resolvedTheme],
+    [mapInstance, isLoaded, isStyleLoaded, styleEpoch, resolvedTheme],
   );
 
   return (
