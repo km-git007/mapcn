@@ -41,7 +41,8 @@ import { useEffect } from "react";
 
 // For child components inside Map, use the useMap hook
 function MapEventListener() {
-  const { map, isLoaded } = useMap();
+  // styleEpoch increments each time the basemap style becomes ready
+  const { map, isLoaded, styleEpoch } = useMap();
 
   useEffect(() => {
     if (!map || !isLoaded) return;

@@ -30,7 +30,7 @@ const anatomyCode = `<Map>
   <MapClusterLayer data={...} />
 </Map>`;
 
-const useMapCode = `const { map, isLoaded } = useMap();`;
+const useMapCode = `const { map, isLoaded, styleEpoch } = useMap();`;
 
 export default function ApiReferencePage() {
   return (
@@ -172,8 +172,9 @@ export default function ApiReferencePage() {
           >
             MapLibre.Map
           </DocsLink>
-          ) and <DocsCode>isLoaded</DocsCode> (boolean) tells you if the map is
-          loaded and ready to use.
+          ), <DocsCode>isLoaded</DocsCode> (boolean) when the map is loaded and
+          the current style is ready to use, and <DocsCode>styleEpoch</DocsCode>{" "}
+          (number) which increments each time a basemap style becomes ready.
         </p>
       </DocsSection>
 
