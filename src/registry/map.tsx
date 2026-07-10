@@ -239,7 +239,8 @@ function subscribeStyleReady(
   let cancelled = false;
   let rafId: number | null = null;
   let attempts = 0;
-  const maxAttempts = 600; // ~10s at 60fps
+  let hasWarned = false;
+  const maxAttempts = 600; // ~10s at 60fps — warn once, keep polling
 
   function cancelScheduledCheck() {
     if (rafId != null) {
@@ -283,14 +284,13 @@ function subscribeStyleReady(
       finish();
       return;
     }
-    if (++attempts > maxAttempts) {
+    if (++attempts > maxAttempts && !hasWarned) {
+      hasWarned = true;
       if (process.env.NODE_ENV !== "production") {
         console.warn(
           "[map] style ready wait exceeded; check style URL / setStyle",
         );
       }
-      cancelScheduledCheck();
-      return;
     }
     scheduleCheck();
   }
