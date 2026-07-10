@@ -350,7 +350,10 @@ const Map = forwardRef<MapRef, MapProps>(function Map(
       cancelStyleReadyWait();
       styleReadyUnsubscribeRef.current = subscribeStyleReady(
         map,
-        () => markStyleReady(map),
+        () => {
+          styleReadyUnsubscribeRef.current = null;
+          markStyleReady(map);
+        },
         options,
       );
     },
@@ -438,19 +441,12 @@ const Map = forwardRef<MapRef, MapProps>(function Map(
 
     if (currentStyleRef.current === newStyle) return;
 
-    cancelStyleReadyWait();
     currentStyleRef.current = newStyle;
     setIsStyleLoaded(false);
 
     mapInstance.setStyle(newStyle, { diff: true });
     armStyleReady(mapInstance);
-  }, [
-    mapInstance,
-    resolvedTheme,
-    mapStyles,
-    cancelStyleReadyWait,
-    armStyleReady,
-  ]);
+  }, [mapInstance, resolvedTheme, mapStyles, armStyleReady]);
 
   // Sync projection when the prop changes after mount.
   useEffect(() => {
