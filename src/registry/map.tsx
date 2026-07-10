@@ -221,9 +221,12 @@ function getViewport(map: MapLibreGL.Map): MapViewport {
 /**
  * Wait until the map style is ready for source/layer operations.
  * Invariant: armed → post-arm `styledata` (unless allowImmediate) →
- * `isStyleLoaded()` → `onReady` once → unsubscribe.
+ * `idle` settle (style-change path) → `isStyleLoaded()` → `onReady` once →
+ * unsubscribe.
  * After `setStyle`, never pass `allowImmediate`: `isStyleLoaded()` can still
- * be true for the previous style before the swap progresses.
+ * be true for the previous style before the swap progresses. Each post-arm
+ * `styledata` clears the idle settle so rapid/stale style diffs must go idle
+ * again before ready.
  */
 function subscribeStyleReady(
   map: MapLibreGL.Map,
@@ -232,8 +235,11 @@ function subscribeStyleReady(
 ): () => void {
   let settled = false;
   let seenStyledata = false;
+  let seenIdle = false;
   let cancelled = false;
   let rafId: number | null = null;
+  let attempts = 0;
+  const maxAttempts = 600; // ~10s at 60fps
 
   function cancelScheduledCheck() {
     if (rafId != null) {
@@ -242,11 +248,16 @@ function subscribeStyleReady(
     }
   }
 
+  function detach() {
+    cancelScheduledCheck();
+    map.off("styledata", onStyleData);
+    map.off("idle", onIdle);
+  }
+
   function finish() {
     if (cancelled || settled) return;
     settled = true;
-    cancelScheduledCheck();
-    map.off("styledata", onStyleData);
+    detach();
     onReady();
   }
 
@@ -258,25 +269,52 @@ function subscribeStyleReady(
     });
   }
 
+  function gateOpen() {
+    return seenStyledata || !!options?.allowImmediate;
+  }
+
   function check() {
     if (cancelled || settled) return;
-    if (!seenStyledata && !options?.allowImmediate) return;
-    if (map.isStyleLoaded()) finish();
-    else scheduleCheck();
+    if (!gateOpen()) return;
+    // Style-change path: wait for idle after the latest post-arm styledata so
+    // in-flight MapLibre URL diffs can coalesce before we mark ready.
+    if (!options?.allowImmediate && !seenIdle) return;
+    if (map.isStyleLoaded()) {
+      finish();
+      return;
+    }
+    if (++attempts > maxAttempts) {
+      if (process.env.NODE_ENV !== "production") {
+        console.warn(
+          "[map] style ready wait exceeded; check style URL / setStyle",
+        );
+      }
+      cancelScheduledCheck();
+      return;
+    }
+    scheduleCheck();
   }
 
   function onStyleData() {
     seenStyledata = true;
+    seenIdle = false;
+    attempts = 0;
+    check();
+  }
+
+  function onIdle() {
+    if (!gateOpen()) return;
+    seenIdle = true;
     check();
   }
 
   map.on("styledata", onStyleData);
+  map.on("idle", onIdle);
   if (options?.allowImmediate) check();
 
   return () => {
     cancelled = true;
-    cancelScheduledCheck();
-    map.off("styledata", onStyleData);
+    detach();
   };
 }
 
@@ -443,9 +481,10 @@ const Map = forwardRef<MapRef, MapProps>(function Map(
 
     currentStyleRef.current = newStyle;
     setIsStyleLoaded(false);
-
-    mapInstance.setStyle(newStyle, { diff: true });
+    // Arm before setStyle so cancel runs first and post-arm styledata
+    // from this swap cannot be missed (listener attached before transition).
     armStyleReady(mapInstance);
+    mapInstance.setStyle(newStyle, { diff: true });
   }, [mapInstance, resolvedTheme, mapStyles, armStyleReady]);
 
   // Sync projection when the prop changes after mount.
