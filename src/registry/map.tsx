@@ -427,7 +427,6 @@ const Map = forwardRef<MapRef, MapProps>(function Map(
 
     currentStyleRef.current = newStyle;
     styleReadyUnsubRef.current?.();
-    styleReadyUnsubRef.current = null;
     setStyleStatus((status) => ({ ...status, ready: false }));
     // Arm before setStyle. Prefer diff:false — diff:true can settle without
     // a post-arm styledata (hangs the readiness owner).
@@ -1203,9 +1202,6 @@ function useMapLayers({
       ),
     [layers],
   );
-  const lifecycleKey = `${styleEpoch}:${topologyKey}`;
-  const appliedDataRef = useRef<unknown>(null);
-
   useEffect(() => {
     if (!isLoaded || !map) return;
     map.addSource(sourceId, {
@@ -1213,22 +1209,13 @@ function useMapLayers({
       data: data as never,
       ...sourceOptions,
     });
-    appliedDataRef.current = data;
-    for (const layer of layers) {
+    for (const { beforeId, ...layer } of layers) {
       map.addLayer(
-        {
-          id: layer.id,
-          type: layer.type,
-          source: sourceId,
-          ...(layer.paint ? { paint: layer.paint } : {}),
-          ...(layer.layout ? { layout: layer.layout } : {}),
-          ...(layer.filter != null ? { filter: layer.filter } : {}),
-        } as MapLibreGL.AddLayerObject,
-        layer.beforeId,
+        { ...layer, source: sourceId } as MapLibreGL.AddLayerObject,
+        beforeId,
       );
     }
     return () => {
-      appliedDataRef.current = null;
       try {
         for (let i = layers.length - 1; i >= 0; i -= 1) {
           if (map.getLayer(layers[i].id)) map.removeLayer(layers[i].id);
@@ -1238,15 +1225,14 @@ function useMapLayers({
         /* style mid-reload */
       }
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- lifecycleKey owns recreate
-  }, [isLoaded, map, sourceId, sourceOptions, lifecycleKey]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- topologyKey owns recreate
+  }, [isLoaded, map, sourceId, sourceOptions, styleEpoch, topologyKey]);
 
   useEffect(() => {
-    if (!isLoaded || !map || appliedDataRef.current === data) return;
+    if (!isLoaded || !map) return;
     (map.getSource(sourceId) as MapLibreGL.GeoJSONSource | undefined)?.setData(
       data as never,
     );
-    appliedDataRef.current = data;
   }, [isLoaded, map, sourceId, data]);
 
   useEffect(() => {
@@ -1284,7 +1270,6 @@ function useMapLayers({
       const feature = e.features?.[0];
       if (!feature) return;
       map.getCanvas().style.cursor = "pointer";
-      if (feature.id === hoveredId) return;
       setHover(feature.id ?? null);
     };
     const handleMouseLeave = () => {
@@ -1299,7 +1284,7 @@ function useMapLayers({
       setHover(null);
       map.getCanvas().style.cursor = "";
     };
-  }, [isLoaded, map, sourceId, hoverLayerId, lifecycleKey]);
+  }, [isLoaded, map, sourceId, hoverLayerId, styleEpoch, topologyKey]);
 }
 
 type MapRouteProps = {
@@ -1542,9 +1527,7 @@ function MapGeoJSON<
     [defaults.line, linePaint],
   );
   const latestRef = useRef({ onClick, onHover });
-  useEffect(() => {
-    latestRef.current = { onClick, onHover };
-  }, [onClick, onHover]);
+  latestRef.current = { onClick, onHover };
 
   const sourceOptions = useMemo(
     () => (promoteId ? { promoteId } : undefined),
@@ -1821,9 +1804,7 @@ function MapArc<T extends MapArcDatum = MapArcDatum>({
   );
 
   const latestRef = useRef({ data, onClick, onHover });
-  useEffect(() => {
-    latestRef.current = { data, onClick, onHover };
-  }, [data, onClick, onHover]);
+  latestRef.current = { data, onClick, onHover };
 
   const sourceOptions = useMemo(() => ({ promoteId: "id" }), []);
 
