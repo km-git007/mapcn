@@ -51,6 +51,24 @@ function useStableValue<T>(value: T): T {
   return useMemo(() => value, [key]);
 }
 
+/** Non-hover fallback when hoverPaint sets a key the base paint omits. */
+function fallbackPaintValue(key: string): unknown {
+  if (
+    key.endsWith("-opacity") ||
+    key.endsWith("-width") ||
+    key.endsWith("-radius") ||
+    key.endsWith("-blur") ||
+    key.endsWith("-gap-width") ||
+    key.endsWith("-offset")
+  ) {
+    return 1;
+  }
+  if (key.includes("color") || key.endsWith("-pattern")) {
+    return "rgba(0, 0, 0, 0)";
+  }
+  return 1;
+}
+
 function mergeHoverPaint<T extends Record<string, unknown>>(
   paint: T,
   hoverPaint: T | undefined,
@@ -60,15 +78,13 @@ function mergeHoverPaint<T extends Record<string, unknown>>(
   for (const [key, hoverValue] of Object.entries(hoverPaint)) {
     if (hoverValue === undefined) continue;
     const baseValue = merged[key];
-    merged[key] =
-      baseValue === undefined
-        ? hoverValue
-        : [
-            "case",
-            ["boolean", ["feature-state", "hover"], false],
-            hoverValue,
-            baseValue,
-          ];
+    // Always gate on feature-state so hover-only keys do not paint every feature.
+    merged[key] = [
+      "case",
+      ["boolean", ["feature-state", "hover"], false],
+      hoverValue,
+      baseValue === undefined ? fallbackPaintValue(key) : baseValue,
+    ];
   }
   return merged as T;
 }
