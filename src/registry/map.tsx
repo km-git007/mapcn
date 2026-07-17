@@ -44,6 +44,7 @@ const blankMapStyle: MapLibreGL.StyleSpecification = {
   ],
 };
 
+// Prevent equivalent inline style objects from triggering a full map style reload.
 function useStableValue<T>(value: T): T {
   const key = useMemo(() => JSON.stringify(value) ?? "", [value]);
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -241,6 +242,7 @@ const Map = forwardRef<MapRef, MapProps>(function Map(
   const [mapInstance, setMapInstance] = useState<MapLibreGL.Map | null>(null);
   const [isLoaded, setIsLoaded] = useState(false);
   const [isStyleLoaded, setIsStyleLoaded] = useState(false);
+  const [pendingStyle, setPendingStyle] = useState<MapStyleOption | null>(null);
   const currentStyleRef = useRef<MapStyleOption | null>(null);
   const internalUpdateRef = useRef(false);
   const resolvedTheme = useResolvedTheme(themeProp);
@@ -343,7 +345,7 @@ const Map = forwardRef<MapRef, MapProps>(function Map(
     internalUpdateRef.current = false;
   }, [mapInstance, isControlled, viewport]);
 
-  // Handle style change
+  // Close the style gate before swapping styles so consumers observe the reset.
   useEffect(() => {
     if (!mapInstance || !resolvedTheme) return;
 
@@ -354,11 +356,17 @@ const Map = forwardRef<MapRef, MapProps>(function Map(
 
     currentStyleRef.current = newStyle;
     setIsStyleLoaded(false);
+    setPendingStyle(newStyle);
+  }, [mapInstance, resolvedTheme, mapStyles]);
 
+  useEffect(() => {
+    if (!mapInstance || !pendingStyle || isStyleLoaded) return;
+
+    setPendingStyle(null);
     // Full reload (no diff) so `style.load` fires deterministically. A
     // successful diff would never fire it, leaving isStyleLoaded stuck false.
-    mapInstance.setStyle(newStyle, { diff: false });
-  }, [mapInstance, resolvedTheme, mapStyles]);
+    mapInstance.setStyle(pendingStyle, { diff: false });
+  }, [mapInstance, pendingStyle, isStyleLoaded]);
 
   // Sync projection when the prop changes after mount.
   useEffect(() => {
