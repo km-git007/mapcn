@@ -41,18 +41,18 @@ import { useEffect } from "react";
 
 // For child components inside Map, use the useMap hook
 function MapEventListener() {
-  const { map, isLoaded } = useMap();
+  const { map, isLoaded, styleEpoch } = useMap();
 
   useEffect(() => {
     if (!map || !isLoaded) return;
-    
+
     const handleClick = (e) => {
       console.log("Clicked at:", e.lngLat);
     };
 
     map.on("click", handleClick);
     return () => map.off("click", handleClick);
-  }, [map, isLoaded]);
+  }, [map, isLoaded, styleEpoch]);
 
   return null;
 }
@@ -119,7 +119,10 @@ export default function AdvancedPage() {
         <p>
           For child components rendered inside <DocsCode>Map</DocsCode>, use the{" "}
           <DocsCode>useMap</DocsCode> hook to access the map instance and listen
-          to events.
+          to events. <DocsCode>styleEpoch</DocsCode> increments each time a
+          basemap style becomes ready — key custom layer setup on it (and treat{" "}
+          <DocsCode>isLoaded</DocsCode> as the safe-to-touch gate) so theme
+          toggles recreate declarative layers without a second readiness owner.
         </p>
         <CodeBlock code={useMapCode} />
       </DocsSection>

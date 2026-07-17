@@ -30,7 +30,7 @@ const anatomyCode = `<Map>
   <MapClusterLayer data={...} />
 </Map>`;
 
-const useMapCode = `const { map, isLoaded } = useMap();`;
+const useMapCode = `const { map, isLoaded, styleEpoch } = useMap();`;
 
 export default function ApiReferencePage() {
   return (
@@ -162,6 +162,8 @@ export default function ApiReferencePage() {
         <p>
           A hook that provides access to the MapLibre map instance and loading
           state. Must be used within a <DocsCode>Map</DocsCode> component.
+          Built-in layer components recreate on <DocsCode>styleEpoch</DocsCode>{" "}
+          so theme style swaps stay correct without a separate readiness path.
         </p>
         <CodeBlock code={useMapCode} language="tsx" showCopyButton={false} />
         <p>
@@ -172,8 +174,11 @@ export default function ApiReferencePage() {
           >
             MapLibre.Map
           </DocsLink>
-          ) and <DocsCode>isLoaded</DocsCode> (boolean) tells you if the map is
-          loaded and ready to use.
+          ), <DocsCode>isLoaded</DocsCode> (boolean — map exists and the current
+          style is safe to touch), <DocsCode>resolvedTheme</DocsCode>, and{" "}
+          <DocsCode>styleEpoch</DocsCode> (number — increments once per ready
+          style, including the initial load and each completed theme/style
+          change).
         </p>
       </DocsSection>
 
