@@ -51,24 +51,6 @@ function useStableValue<T>(value: T): T {
   return useMemo(() => value, [key]);
 }
 
-/** Non-hover fallback when hoverPaint sets a key the base paint omits. */
-function fallbackPaintValue(key: string): unknown {
-  if (
-    key.endsWith("-opacity") ||
-    key.endsWith("-width") ||
-    key.endsWith("-radius") ||
-    key.endsWith("-blur") ||
-    key.endsWith("-gap-width") ||
-    key.endsWith("-offset")
-  ) {
-    return 1;
-  }
-  if (key.includes("color") || key.endsWith("-pattern")) {
-    return "rgba(0, 0, 0, 0)";
-  }
-  return 1;
-}
-
 function mergeHoverPaint<T extends Record<string, unknown>>(
   paint: T,
   hoverPaint: T | undefined,
@@ -76,14 +58,13 @@ function mergeHoverPaint<T extends Record<string, unknown>>(
   if (!hoverPaint) return paint;
   const merged: Record<string, unknown> = { ...paint };
   for (const [key, hoverValue] of Object.entries(hoverPaint)) {
-    if (hoverValue === undefined) continue;
     const baseValue = merged[key];
-    // Always gate on feature-state so hover-only keys do not paint every feature.
+    if (hoverValue === undefined || baseValue === undefined) continue;
     merged[key] = [
       "case",
       ["boolean", ["feature-state", "hover"], false],
       hoverValue,
-      baseValue === undefined ? fallbackPaintValue(key) : baseValue,
+      baseValue,
     ];
   }
   return merged as T;
@@ -1422,6 +1403,10 @@ type MapGeoJSONData<
   | string;
 
 type MapFillPaint = NonNullable<MapLibreGL.FillLayerSpecification["paint"]>;
+type MapFillHoverPaint = Pick<
+  MapFillPaint,
+  "fill-opacity" | "fill-color" | "fill-outline-color"
+>;
 type MapLinePaint = NonNullable<MapLibreGL.LineLayerSpecification["paint"]>;
 
 /** A rendered feature with strongly-typed `properties`. */
@@ -1472,7 +1457,7 @@ type MapGeoJSONProps<
    * Paint merged onto the fill layer for the feature under the cursor, applied
    * as a `case` expression keyed on hover feature-state. Requires `promoteId`.
    */
-  fillHoverPaint?: MapFillPaint;
+  fillHoverPaint?: MapFillHoverPaint;
   /** Callback when a feature is clicked. */
   onClick?: (e: MapGeoJSONEvent<P>) => void;
   /** Callback fired when the hovered feature changes; `null` when the cursor leaves. */
@@ -1527,7 +1512,11 @@ function MapGeoJSON<
   const mergedFillPaint = useMemo(
     () =>
       mergeHoverPaint(
-        { "fill-color": defaults.fill, ...(fillPaint || {}) },
+        {
+          "fill-color": defaults.fill,
+          "fill-opacity": 1,
+          ...(fillPaint || {}),
+        },
         fillHoverPaint,
       ),
     [defaults.fill, fillPaint, fillHoverPaint],
@@ -1665,6 +1654,15 @@ type MapArcEvent<T extends MapArcDatum = MapArcDatum> = {
 };
 
 type MapArcLinePaint = NonNullable<MapLibreGL.LineLayerSpecification["paint"]>;
+type MapArcHoverPaint = Pick<
+  MapArcLinePaint,
+  | "line-opacity"
+  | "line-color"
+  | "line-width"
+  | "line-gap-width"
+  | "line-offset"
+  | "line-blur"
+>;
 type MapArcLineLayout = NonNullable<
   MapLibreGL.LineLayerSpecification["layout"]
 >;
@@ -1698,7 +1696,7 @@ type MapArcProps<T extends MapArcDatum = MapArcDatum> = {
    * is merged into `paint` as a `case` expression keyed on per-feature hover
    * state, so only the hovered arc changes appearance.
    */
-  hoverPaint?: MapArcLinePaint;
+  hoverPaint?: MapArcHoverPaint;
   /** Callback when an arc is clicked. */
   onClick?: (e: MapArcEvent<T>) => void;
   /**
