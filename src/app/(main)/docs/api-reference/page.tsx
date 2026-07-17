@@ -218,7 +218,8 @@ export default function ApiReferencePage() {
               name: "showFullscreen",
               type: "boolean",
               default: "false",
-              description: "Show fullscreen toggle button.",
+              description:
+                "Show a fullscreen toggle. Uses native fullscreen when available and a CSS fallback on iOS Safari and other unsupported browsers.",
             },
             {
               name: "className",

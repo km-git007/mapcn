@@ -17,7 +17,15 @@ import {
   type ReactNode,
 } from "react";
 import { createPortal } from "react-dom";
-import { X, Minus, Plus, Locate, Maximize, Loader2 } from "lucide-react";
+import {
+  X,
+  Minus,
+  Plus,
+  Locate,
+  Maximize,
+  Minimize,
+  Loader2,
+} from "lucide-react";
 
 import { cn } from "@/lib/utils";
 
@@ -880,16 +888,19 @@ function ControlButton({
   label,
   children,
   disabled = false,
+  pressed,
 }: {
   onClick: () => void;
   label: string;
   children: React.ReactNode;
   disabled?: boolean;
+  pressed?: boolean;
 }) {
   return (
     <button
       onClick={onClick}
       aria-label={label}
+      aria-pressed={pressed}
       type="button"
       className={cn(
         "flex size-8 items-center justify-center transition-colors",
@@ -902,6 +913,297 @@ function ControlButton({
     >
       {children}
     </button>
+  );
+}
+
+type WebkitFullscreenDocument = Document & {
+  webkitFullscreenElement?: Element | null;
+  webkitExitFullscreen?: () => Promise<void> | void;
+  webkitCancelFullScreen?: () => Promise<void> | void;
+};
+
+type WebkitFullscreenElement = HTMLElement & {
+  webkitRequestFullscreen?: () => Promise<void> | void;
+};
+
+type PseudoFullscreenState = {
+  map: MapLibreGL.Map;
+  handleMapRemove: () => void;
+};
+
+type ScheduledMapResize = {
+  frame: number;
+  handleMapRemove: () => void;
+};
+
+const pseudoFullscreenStates = new WeakMap<
+  HTMLElement,
+  PseudoFullscreenState
+>();
+const scheduledMapResizes = new WeakMap<MapLibreGL.Map, ScheduledMapResize>();
+const pseudoFullscreenContainers: HTMLElement[] = [];
+const pseudoFullscreenChangeEvent = "mapcn:pseudo-fullscreen-change";
+let pseudoFullscreenBodyOverflow: string | null = null;
+
+function notifyPseudoFullscreenChange(container: HTMLElement) {
+  container.dispatchEvent(new Event(pseudoFullscreenChangeEvent));
+}
+
+function handlePseudoFullscreenKeyDown(event: KeyboardEvent) {
+  if (event.key !== "Escape") return;
+
+  const container = pseudoFullscreenContainers.at(-1);
+  const state = container && pseudoFullscreenStates.get(container);
+  if (state) exitPseudoFullscreen(state.map);
+}
+
+function removePseudoFullscreenContainer(container: HTMLElement) {
+  const index = pseudoFullscreenContainers.lastIndexOf(container);
+  if (index !== -1) pseudoFullscreenContainers.splice(index, 1);
+}
+
+function getFullscreenElement(): Element | null {
+  if (typeof document === "undefined") return null;
+  const webkitDocument = document as WebkitFullscreenDocument;
+  return (
+    document.fullscreenElement ?? webkitDocument.webkitFullscreenElement ?? null
+  );
+}
+
+function queueMapResizeFrame(
+  map: MapLibreGL.Map,
+  scheduledResize: ScheduledMapResize,
+) {
+  scheduledResize.frame = requestAnimationFrame(() => {
+    if (scheduledMapResizes.get(map) !== scheduledResize) return;
+
+    scheduledMapResizes.delete(map);
+    map.off("remove", scheduledResize.handleMapRemove);
+    map.resize();
+  });
+}
+
+function scheduleMapResize(map: MapLibreGL.Map) {
+  const scheduledResize = scheduledMapResizes.get(map);
+  if (scheduledResize) {
+    cancelAnimationFrame(scheduledResize.frame);
+    queueMapResizeFrame(map, scheduledResize);
+    return;
+  }
+
+  const nextScheduledResize: ScheduledMapResize = {
+    frame: 0,
+    handleMapRemove: () => {
+      const pendingResize = scheduledMapResizes.get(map);
+      if (pendingResize !== nextScheduledResize) return;
+
+      cancelAnimationFrame(pendingResize.frame);
+      scheduledMapResizes.delete(map);
+      map.off("remove", nextScheduledResize.handleMapRemove);
+    },
+  };
+  scheduledMapResizes.set(map, nextScheduledResize);
+  map.once("remove", nextScheduledResize.handleMapRemove);
+  queueMapResizeFrame(map, nextScheduledResize);
+}
+
+function isMapFullscreen(map: MapLibreGL.Map): boolean {
+  const container = map.getContainer();
+  return (
+    getFullscreenElement() === container || pseudoFullscreenStates.has(container)
+  );
+}
+
+function exitPseudoFullscreen(map: MapLibreGL.Map, shouldResize = true) {
+  const container = map.getContainer();
+  const state = pseudoFullscreenStates.get(container);
+  if (!state) return;
+
+  pseudoFullscreenStates.delete(container);
+  removePseudoFullscreenContainer(container);
+  container.classList.remove("maplibregl-pseudo-fullscreen");
+  if (pseudoFullscreenContainers.length === 0) {
+    if (pseudoFullscreenBodyOverflow !== null) {
+      document.body.style.overflow = pseudoFullscreenBodyOverflow;
+    }
+    pseudoFullscreenBodyOverflow = null;
+    document.removeEventListener("keydown", handlePseudoFullscreenKeyDown);
+  }
+  map.off("remove", state.handleMapRemove);
+  notifyPseudoFullscreenChange(container);
+  if (shouldResize) scheduleMapResize(map);
+}
+
+function enterPseudoFullscreen(map: MapLibreGL.Map) {
+  const container = map.getContainer();
+  if (pseudoFullscreenStates.has(container)) return;
+
+  const handleMapRemove = () => exitPseudoFullscreen(map, false);
+  if (pseudoFullscreenContainers.length === 0) {
+    pseudoFullscreenBodyOverflow = document.body.style.overflow;
+    document.addEventListener("keydown", handlePseudoFullscreenKeyDown);
+  }
+  pseudoFullscreenStates.set(container, {
+    map,
+    handleMapRemove,
+  });
+  pseudoFullscreenContainers.push(container);
+  container.classList.add("maplibregl-pseudo-fullscreen");
+  document.body.style.overflow = "hidden";
+  map.once("remove", handleMapRemove);
+  notifyPseudoFullscreenChange(container);
+  scheduleMapResize(map);
+}
+
+async function requestNativeFullscreen(
+  container: HTMLElement,
+): Promise<boolean> {
+  if (container.requestFullscreen) {
+    try {
+      await container.requestFullscreen();
+      return true;
+    } catch {
+      // Try the prefixed API before falling back to CSS.
+    }
+  }
+
+  const webkitContainer = container as WebkitFullscreenElement;
+  if (webkitContainer.webkitRequestFullscreen) {
+    try {
+      await webkitContainer.webkitRequestFullscreen();
+      return true;
+    } catch {
+      // The caller will use pseudo-fullscreen.
+    }
+  }
+
+  return false;
+}
+
+async function exitNativeFullscreen(): Promise<boolean> {
+  if (document.fullscreenElement && document.exitFullscreen) {
+    try {
+      await document.exitFullscreen();
+      return true;
+    } catch {
+      // Try the prefixed API before retaining the current state.
+    }
+  }
+
+  const webkitDocument = document as WebkitFullscreenDocument;
+  if (!webkitDocument.webkitFullscreenElement) return false;
+  const exit =
+    webkitDocument.webkitExitFullscreen ?? webkitDocument.webkitCancelFullScreen;
+  if (!exit) return false;
+  try {
+    await exit.call(webkitDocument);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function useMapFullscreen(map: MapLibreGL.Map | null) {
+  const [isFullscreen, setIsFullscreen] = useState(() =>
+    map ? isMapFullscreen(map) : false,
+  );
+  const [isPending, setIsPending] = useState(false);
+  const pendingRef = useRef(false);
+  const operationRef = useRef(0);
+
+  const syncFullscreenState = useCallback(() => {
+    setIsFullscreen(map ? isMapFullscreen(map) : false);
+  }, [map]);
+
+  useEffect(() => {
+    if (!map) return;
+    let isActive = true;
+
+    const handleNativeChange = () => {
+      syncFullscreenState();
+      scheduleMapResize(map);
+    };
+    const handlePseudoFullscreenChange = () => syncFullscreenState();
+    const container = map.getContainer();
+
+    document.addEventListener("fullscreenchange", handleNativeChange);
+    document.addEventListener("webkitfullscreenchange", handleNativeChange);
+    container.addEventListener(
+      pseudoFullscreenChangeEvent,
+      handlePseudoFullscreenChange,
+    );
+    queueMicrotask(() => {
+      if (isActive) syncFullscreenState();
+    });
+
+    return () => {
+      isActive = false;
+      operationRef.current += 1;
+      document.removeEventListener("fullscreenchange", handleNativeChange);
+      document.removeEventListener(
+        "webkitfullscreenchange",
+        handleNativeChange,
+      );
+      container.removeEventListener(
+        pseudoFullscreenChangeEvent,
+        handlePseudoFullscreenChange,
+      );
+    };
+  }, [map, syncFullscreenState]);
+
+  const toggleFullscreen = useCallback(async () => {
+    if (!map || pendingRef.current) return;
+
+    const operation = operationRef.current + 1;
+    operationRef.current = operation;
+    pendingRef.current = true;
+    setIsPending(true);
+
+    if (isMapFullscreen(map)) {
+      if (pseudoFullscreenStates.has(map.getContainer())) {
+        exitPseudoFullscreen(map);
+      } else {
+        await exitNativeFullscreen();
+      }
+    } else {
+      const enteredNative = await requestNativeFullscreen(map.getContainer());
+      if (
+        !enteredNative &&
+        operationRef.current === operation &&
+        !isMapFullscreen(map)
+      ) {
+        enterPseudoFullscreen(map);
+      }
+    }
+
+    if (operationRef.current === operation) {
+      pendingRef.current = false;
+      setIsPending(false);
+      syncFullscreenState();
+    }
+  }, [map, syncFullscreenState]);
+
+  return { isFullscreen, isPending, toggleFullscreen };
+}
+
+function FullscreenButton() {
+  const { map } = useMap();
+  const { isFullscreen, isPending, toggleFullscreen } =
+    useMapFullscreen(map);
+
+  return (
+    <ControlButton
+      onClick={() => void toggleFullscreen()}
+      label={isFullscreen ? "Exit fullscreen" : "Enter fullscreen"}
+      disabled={isPending}
+      pressed={isFullscreen}
+    >
+      {isFullscreen ? (
+        <Minimize className="size-4" />
+      ) : (
+        <Maximize className="size-4" />
+      )}
+    </ControlButton>
   );
 }
 
@@ -956,16 +1258,6 @@ function MapControls({
     );
   }, [map, onLocate]);
 
-  const handleFullscreen = useCallback(() => {
-    const container = map?.getContainer();
-    if (!container) return;
-    if (document.fullscreenElement) {
-      document.exitFullscreen();
-    } else {
-      container.requestFullscreen();
-    }
-  }, [map]);
-
   return (
     <div
       className={cn(
@@ -1006,9 +1298,7 @@ function MapControls({
       )}
       {showFullscreen && (
         <ControlGroup>
-          <ControlButton onClick={handleFullscreen} label="Toggle fullscreen">
-            <Maximize className="size-4" />
-          </ControlButton>
+          <FullscreenButton />
         </ControlGroup>
       )}
     </div>
