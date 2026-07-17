@@ -39,9 +39,9 @@ function MyMapComponent() {
 const useMapCode = `import { Map, useMap } from "@/components/ui/map";
 import { useEffect } from "react";
 
-// For child components inside Map, use the useMap hook
+// Map-wide listeners only need isLoaded — they survive style swaps.
 function MapEventListener() {
-  const { map, isLoaded, styleEpoch } = useMap();
+  const { map, isLoaded } = useMap();
 
   useEffect(() => {
     if (!map || !isLoaded) return;
@@ -52,7 +52,31 @@ function MapEventListener() {
 
     map.on("click", handleClick);
     return () => map.off("click", handleClick);
-  }, [map, isLoaded, styleEpoch]);
+  }, [map, isLoaded]);
+
+  return null;
+}
+
+// Custom sources/layers must recreate when styleEpoch advances.
+function CustomParkLayer({ data }) {
+  const { map, isLoaded, styleEpoch } = useMap();
+
+  useEffect(() => {
+    if (!map || !isLoaded) return;
+
+    map.addSource("parks", { type: "geojson", data });
+    map.addLayer({
+      id: "parks-fill",
+      type: "fill",
+      source: "parks",
+      paint: { "fill-color": "#22c55e", "fill-opacity": 0.4 },
+    });
+
+    return () => {
+      if (map.getLayer("parks-fill")) map.removeLayer("parks-fill");
+      if (map.getSource("parks")) map.removeSource("parks");
+    };
+  }, [map, isLoaded, styleEpoch, data]);
 
   return null;
 }
@@ -60,6 +84,7 @@ function MapEventListener() {
 // Usage
 <Map center={[-74, 40.7]} zoom={10}>
   <MapEventListener />
+  <CustomParkLayer data={parks} />
 </Map>`;
 
 export default function AdvancedPage() {

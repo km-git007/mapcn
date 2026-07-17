@@ -296,14 +296,13 @@ const Map = forwardRef<MapRef, MapProps>(function Map(
   const containerRef = useRef<HTMLDivElement>(null);
   const [mapInstance, setMapInstance] = useState<MapLibreGL.Map | null>(null);
   const [hasLoadEvent, setHasLoadEvent] = useState(false);
-  const [isStyleReady, setIsStyleReady] = useState(false);
-  const [styleEpoch, setStyleEpoch] = useState(0);
+  const [styleStatus, setStyleStatus] = useState({ ready: false, epoch: 0 });
   const currentStyleRef = useRef<MapStyleOption | null>(null);
   const internalUpdateRef = useRef(false);
-  const projectionRef = useRef(projection);
-  projectionRef.current = projection;
   const styleReadyUnsubRef = useRef<(() => void) | null>(null);
   const resolvedTheme = useResolvedTheme(themeProp);
+  const isStyleReady = styleStatus.ready;
+  const styleEpoch = styleStatus.epoch;
 
   const isControlled = viewport !== undefined && onViewportChange !== undefined;
 
@@ -327,11 +326,8 @@ const Map = forwardRef<MapRef, MapProps>(function Map(
     return defaultStyles;
   }, [stableStyles, blank]);
 
-  const handleStyleReady = useCallback((map: MapLibreGL.Map) => {
-    setHasLoadEvent(true);
-    setIsStyleReady(true);
-    setStyleEpoch((value) => value + 1);
-    if (projectionRef.current) map.setProjection(projectionRef.current);
+  const handleStyleReady = useCallback(() => {
+    setStyleStatus((status) => ({ ready: true, epoch: status.epoch + 1 }));
   }, []);
 
   // Expose the map instance to the parent component
@@ -369,7 +365,7 @@ const Map = forwardRef<MapRef, MapProps>(function Map(
     map.on("move", handleMove);
     styleReadyUnsubRef.current = subscribeStyleReady(
       map,
-      () => handleStyleReady(map),
+      handleStyleReady,
       { allowImmediate: true },
     );
     setMapInstance(map);
@@ -381,7 +377,7 @@ const Map = forwardRef<MapRef, MapProps>(function Map(
       map.off("move", handleMove);
       map.remove();
       setHasLoadEvent(false);
-      setIsStyleReady(false);
+      setStyleStatus({ ready: false, epoch: 0 });
       setMapInstance(null);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -415,7 +411,7 @@ const Map = forwardRef<MapRef, MapProps>(function Map(
     internalUpdateRef.current = false;
   }, [mapInstance, isControlled, viewport]);
 
-  // Style identity change: clear ready gate, swap style, re-arm readiness.
+  // Style identity change: close ready gate, swap style, re-arm readiness.
   useEffect(() => {
     if (!mapInstance || !resolvedTheme) return;
 
@@ -427,19 +423,21 @@ const Map = forwardRef<MapRef, MapProps>(function Map(
     currentStyleRef.current = newStyle;
     styleReadyUnsubRef.current?.();
     styleReadyUnsubRef.current = null;
-    // Keep isLoaded true; layers recreate on styleEpoch. Arm before setStyle.
-    // Prefer diff:false — diff:true can settle without a post-arm styledata.
-    styleReadyUnsubRef.current = subscribeStyleReady(mapInstance, () =>
-      handleStyleReady(mapInstance),
+    setStyleStatus((status) => ({ ...status, ready: false }));
+    // Arm before setStyle. Prefer diff:false — diff:true can settle without
+    // a post-arm styledata (hangs the readiness owner).
+    styleReadyUnsubRef.current = subscribeStyleReady(
+      mapInstance,
+      handleStyleReady,
     );
     mapInstance.setStyle(newStyle, { diff: false });
   }, [mapInstance, resolvedTheme, mapStyles, handleStyleReady]);
 
-  // Sync projection when the prop changes after the current style is ready.
+  // Projection lives on styleEpoch — not inside the readiness callback.
   useEffect(() => {
     if (!mapInstance || !isStyleReady || !projection) return;
     mapInstance.setProjection(projection);
-  }, [mapInstance, isStyleReady, projection]);
+  }, [mapInstance, isStyleReady, styleEpoch, projection]);
 
   const contextValue = useMemo(
     () => ({
@@ -1191,6 +1189,11 @@ function useMapLayers({
       ),
     [layers],
   );
+  const lifecycleKey = `${styleEpoch}:${topologyKey}`;
+  const appliedDataRef = useRef<unknown>(null);
+  const appliedPaintRef = useRef(
+    new globalThis.Map<string, { paint: string[]; layout: string[] }>(),
+  );
 
   useEffect(() => {
     if (!isLoaded || !map) return;
@@ -1199,6 +1202,8 @@ function useMapLayers({
       data: data as never,
       ...sourceOptions,
     });
+    appliedDataRef.current = data;
+    appliedPaintRef.current.clear();
     for (const layer of layers) {
       map.addLayer(
         {
@@ -1211,8 +1216,14 @@ function useMapLayers({
         } as MapLibreGL.AddLayerObject,
         layer.beforeId,
       );
+      appliedPaintRef.current.set(layer.id, {
+        paint: Object.keys(layer.paint ?? {}),
+        layout: Object.keys(layer.layout ?? {}),
+      });
     }
     return () => {
+      appliedDataRef.current = null;
+      appliedPaintRef.current.clear();
       try {
         for (let i = layers.length - 1; i >= 0; i -= 1) {
           if (map.getLayer(layers[i].id)) map.removeLayer(layers[i].id);
@@ -1222,20 +1233,37 @@ function useMapLayers({
         /* style mid-reload */
       }
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- topologyKey owns recreate
-  }, [isLoaded, map, styleEpoch, sourceId, sourceOptions, topologyKey]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- lifecycleKey owns recreate
+  }, [isLoaded, map, sourceId, sourceOptions, lifecycleKey]);
 
   useEffect(() => {
-    if (!isLoaded || !map) return;
+    if (!isLoaded || !map || appliedDataRef.current === data) return;
     (map.getSource(sourceId) as MapLibreGL.GeoJSONSource | undefined)?.setData(
       data as never,
     );
-  }, [isLoaded, map, sourceId, data, styleEpoch]);
+    appliedDataRef.current = data;
+  }, [isLoaded, map, sourceId, data]);
 
   useEffect(() => {
     if (!isLoaded || !map) return;
     for (const layer of layers) {
       if (!map.getLayer(layer.id)) continue;
+      const prev = appliedPaintRef.current.get(layer.id) ?? {
+        paint: [],
+        layout: [],
+      };
+      const nextPaint = Object.keys(layer.paint ?? {});
+      const nextLayout = Object.keys(layer.layout ?? {});
+      for (const key of prev.paint) {
+        if (!nextPaint.includes(key)) {
+          map.setPaintProperty(layer.id, key, undefined as never);
+        }
+      }
+      for (const key of prev.layout) {
+        if (!nextLayout.includes(key)) {
+          map.setLayoutProperty(layer.id, key, undefined as never);
+        }
+      }
       if (layer.paint) {
         for (const [key, value] of Object.entries(layer.paint)) {
           map.setPaintProperty(layer.id, key, value as never);
@@ -1246,8 +1274,12 @@ function useMapLayers({
           map.setLayoutProperty(layer.id, key, value as never);
         }
       }
+      appliedPaintRef.current.set(layer.id, {
+        paint: nextPaint,
+        layout: nextLayout,
+      });
     }
-  }, [isLoaded, map, layers, styleEpoch]);
+  }, [isLoaded, map, layers]);
 
   useEffect(() => {
     if (!isLoaded || !map || !hoverLayerId) return;
@@ -1282,7 +1314,7 @@ function useMapLayers({
       setHover(null);
       map.getCanvas().style.cursor = "";
     };
-  }, [isLoaded, map, sourceId, hoverLayerId, styleEpoch]);
+  }, [isLoaded, map, sourceId, hoverLayerId, lifecycleKey]);
 }
 
 type MapRouteProps = {
@@ -1320,7 +1352,7 @@ function MapRoute({
   onMouseLeave,
   interactive = true,
 }: MapRouteProps) {
-  const { map, isLoaded } = useMap();
+  const { map, isLoaded, styleEpoch } = useMap();
   const autoId = useId();
   const id = propId ?? autoId;
   const sourceId = `route-source-${id}`;
@@ -1348,7 +1380,7 @@ function MapRoute({
           "line-color": color,
           "line-width": width,
           "line-opacity": opacity,
-          "line-dasharray": dashArray,
+          ...(dashArray ? { "line-dasharray": dashArray } : {}),
         },
       },
     ],
@@ -1381,10 +1413,12 @@ function MapRoute({
       map.off("click", layerId, handleClick);
       map.off("mouseenter", layerId, handleMouseEnter);
       map.off("mouseleave", layerId, handleMouseLeave);
+      map.getCanvas().style.cursor = "";
     };
   }, [
     isLoaded,
     map,
+    styleEpoch,
     layerId,
     onClick,
     onMouseEnter,
@@ -1494,7 +1528,7 @@ function MapGeoJSON<
   interactive = false,
   beforeId,
 }: MapGeoJSONProps<P>) {
-  const { map, isLoaded, resolvedTheme } = useMap();
+  const { map, isLoaded, styleEpoch, resolvedTheme } = useMap();
   const autoId = useId();
   const id = propId ?? autoId;
   const sourceId = `geojson-source-${id}`;
@@ -1614,7 +1648,7 @@ function MapGeoJSON<
       map.off("mouseleave", fillLayerId, handleMouseLeave);
       map.off("click", fillLayerId, handleClick);
     };
-  }, [isLoaded, map, fillLayerId, interactive, showFill]);
+  }, [isLoaded, map, styleEpoch, fillLayerId, interactive, showFill]);
 
   return null;
 }
@@ -1760,7 +1794,7 @@ function MapArc<T extends MapArcDatum = MapArcDatum>({
   interactive = true,
   beforeId,
 }: MapArcProps<T>) {
-  const { map, isLoaded } = useMap();
+  const { map, isLoaded, styleEpoch } = useMap();
   const autoId = useId();
   const id = propId ?? autoId;
   const sourceId = `arc-source-${id}`;
@@ -1893,7 +1927,7 @@ function MapArc<T extends MapArcDatum = MapArcDatum>({
       map.off("mouseleave", hitLayerId, handleMouseLeave);
       map.off("click", hitLayerId, handleClick);
     };
-  }, [isLoaded, map, hitLayerId, interactive]);
+  }, [isLoaded, map, styleEpoch, hitLayerId, interactive]);
 
   return null;
 }
@@ -1945,7 +1979,7 @@ function MapClusterLayer<
   onPointClick,
   onClusterClick,
 }: MapClusterLayerProps<P>) {
-  const { map, isLoaded } = useMap();
+  const { map, isLoaded, styleEpoch } = useMap();
   const id = useId();
   const sourceId = `cluster-source-${id}`;
   const clusterLayerId = `clusters-${id}`;
@@ -2118,10 +2152,12 @@ function MapClusterLayer<
       map.off("mouseleave", clusterLayerId, handleMouseLeaveCluster);
       map.off("mouseenter", unclusteredLayerId, handleMouseEnterPoint);
       map.off("mouseleave", unclusteredLayerId, handleMouseLeavePoint);
+      map.getCanvas().style.cursor = "";
     };
   }, [
     isLoaded,
     map,
+    styleEpoch,
     clusterLayerId,
     unclusteredLayerId,
     sourceId,
