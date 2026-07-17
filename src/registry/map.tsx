@@ -75,11 +75,15 @@ function mergeHoverPaint<T extends Record<string, unknown>>(
 
 type Theme = "light" | "dark";
 
-// Check document class for theme (works with next-themes, etc.)
+// Check the document for an explicit theme (works with next-themes, etc.).
+// Covers both `attribute="class"` (the default) and `attribute="data-theme"`.
 function getDocumentTheme(): Theme | null {
   if (typeof document === "undefined") return null;
-  if (document.documentElement.classList.contains("dark")) return "dark";
-  if (document.documentElement.classList.contains("light")) return "light";
+  const root = document.documentElement;
+  if (root.classList.contains("dark")) return "dark";
+  if (root.classList.contains("light")) return "light";
+  const dataTheme = root.dataset.theme;
+  if (dataTheme === "dark" || dataTheme === "light") return dataTheme;
   return null;
 }
 
@@ -99,7 +103,8 @@ function useResolvedTheme(themeProp?: "light" | "dark"): Theme {
   useEffect(() => {
     if (themeProp) return; // Skip detection if theme is provided via prop
 
-    // Watch for document class changes (e.g., next-themes toggling dark class)
+    // Watch for document theme changes (e.g., next-themes toggling the class
+    // or the data-theme attribute).
     const observer = new MutationObserver(() => {
       const docTheme = getDocumentTheme();
       if (docTheme) {
@@ -108,7 +113,7 @@ function useResolvedTheme(themeProp?: "light" | "dark"): Theme {
     });
     observer.observe(document.documentElement, {
       attributes: true,
-      attributeFilter: ["class"],
+      attributeFilter: ["class", "data-theme"],
     });
 
     // Also watch for system preference changes
@@ -1182,18 +1187,24 @@ function useMapLayers({
   hoverLayerId,
 }: UseMapLayersArgs) {
   const { map, isLoaded, styleEpoch } = useMap();
+  // Paint/layout *key* shape is part of topology so removed keys recreate the
+  // layer — MapLibre has no supported unset via setPaintProperty(undefined).
   const topologyKey = useMemo(
     () =>
       JSON.stringify(
-        layers.map((l) => [l.id, l.type, l.filter ?? null, l.beforeId ?? null]),
+        layers.map((l) => [
+          l.id,
+          l.type,
+          l.filter ?? null,
+          l.beforeId ?? null,
+          Object.keys(l.paint ?? {}).sort(),
+          Object.keys(l.layout ?? {}).sort(),
+        ]),
       ),
     [layers],
   );
   const lifecycleKey = `${styleEpoch}:${topologyKey}`;
   const appliedDataRef = useRef<unknown>(null);
-  const appliedPaintRef = useRef(
-    new globalThis.Map<string, { paint: string[]; layout: string[] }>(),
-  );
 
   useEffect(() => {
     if (!isLoaded || !map) return;
@@ -1203,7 +1214,6 @@ function useMapLayers({
       ...sourceOptions,
     });
     appliedDataRef.current = data;
-    appliedPaintRef.current.clear();
     for (const layer of layers) {
       map.addLayer(
         {
@@ -1216,14 +1226,9 @@ function useMapLayers({
         } as MapLibreGL.AddLayerObject,
         layer.beforeId,
       );
-      appliedPaintRef.current.set(layer.id, {
-        paint: Object.keys(layer.paint ?? {}),
-        layout: Object.keys(layer.layout ?? {}),
-      });
     }
     return () => {
       appliedDataRef.current = null;
-      appliedPaintRef.current.clear();
       try {
         for (let i = layers.length - 1; i >= 0; i -= 1) {
           if (map.getLayer(layers[i].id)) map.removeLayer(layers[i].id);
@@ -1248,22 +1253,6 @@ function useMapLayers({
     if (!isLoaded || !map) return;
     for (const layer of layers) {
       if (!map.getLayer(layer.id)) continue;
-      const prev = appliedPaintRef.current.get(layer.id) ?? {
-        paint: [],
-        layout: [],
-      };
-      const nextPaint = Object.keys(layer.paint ?? {});
-      const nextLayout = Object.keys(layer.layout ?? {});
-      for (const key of prev.paint) {
-        if (!nextPaint.includes(key)) {
-          map.setPaintProperty(layer.id, key, undefined as never);
-        }
-      }
-      for (const key of prev.layout) {
-        if (!nextLayout.includes(key)) {
-          map.setLayoutProperty(layer.id, key, undefined as never);
-        }
-      }
       if (layer.paint) {
         for (const [key, value] of Object.entries(layer.paint)) {
           map.setPaintProperty(layer.id, key, value as never);
@@ -1274,10 +1263,6 @@ function useMapLayers({
           map.setLayoutProperty(layer.id, key, value as never);
         }
       }
-      appliedPaintRef.current.set(layer.id, {
-        paint: nextPaint,
-        layout: nextLayout,
-      });
     }
   }, [isLoaded, map, layers]);
 
@@ -1613,7 +1598,8 @@ function MapGeoJSON<
       const feature = e.features?.[0];
       if (!feature) return;
       const featureId = feature.id ?? null;
-      if (featureId === lastFeatureId) return;
+      // Features without ids still need onHover; only dedupe when id is set.
+      if (featureId != null && featureId === lastFeatureId) return;
       lastFeatureId = featureId;
       latestRef.current.onHover?.({
         feature: feature as unknown as MapGeoJSONFeature<P>,
@@ -2184,4 +2170,25 @@ export {
   MapClusterLayer,
 };
 
-export type { MapRef, MapViewport, MapArcDatum, MapArcEvent, MapGeoJSONEvent };
+export type {
+  MapRef,
+  MapViewport,
+  MapStyleOption,
+  MapArcDatum,
+  MapArcEvent,
+  MapGeoJSONData,
+  MapGeoJSONFeature,
+  MapGeoJSONEvent,
+  MapProps,
+  MapMarkerProps,
+  MarkerContentProps,
+  MarkerPopupProps,
+  MarkerTooltipProps,
+  MarkerLabelProps,
+  MapControlsProps,
+  MapPopupProps,
+  MapRouteProps,
+  MapArcProps,
+  MapGeoJSONProps,
+  MapClusterLayerProps,
+};
