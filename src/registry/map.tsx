@@ -305,6 +305,7 @@ const Map = forwardRef<MapRef, MapProps>(function Map(
   const resolvedTheme = useResolvedTheme(themeProp);
   const isStyleReady = styleStatus.ready;
   const styleEpoch = styleStatus.epoch;
+  const isLoaded = hasLoadEvent && isStyleReady;
 
   const isControlled = viewport !== undefined && onViewportChange !== undefined;
 
@@ -443,11 +444,11 @@ const Map = forwardRef<MapRef, MapProps>(function Map(
   const contextValue = useMemo(
     () => ({
       map: mapInstance,
-      isLoaded: hasLoadEvent && isStyleReady,
+      isLoaded,
       resolvedTheme,
       styleEpoch,
     }),
-    [mapInstance, hasLoadEvent, isStyleReady, resolvedTheme, styleEpoch],
+    [mapInstance, isLoaded, resolvedTheme, styleEpoch],
   );
 
   return (
@@ -458,7 +459,7 @@ const Map = forwardRef<MapRef, MapProps>(function Map(
       >
         {(!hasLoadEvent || loading) && <DefaultLoader />}
         {/* Mount children only when map + style are safe to touch */}
-        {mapInstance && hasLoadEvent && isStyleReady && children}
+        {mapInstance && isLoaded && children}
       </div>
     </MapContext.Provider>
   );
@@ -1523,11 +1524,6 @@ function MapGeoJSON<
     }),
     [defaults.line, linePaint],
   );
-  const latestRef = useRef({ onClick, onHover });
-  useEffect(() => {
-    latestRef.current = { onClick, onHover };
-  }, [onClick, onHover]);
-
   const sourceOptions = useMemo(
     () => (promoteId ? { promoteId } : undefined),
     [promoteId],
@@ -1570,7 +1566,7 @@ function MapGeoJSON<
     hoverLayerId: interactive && showFill ? fillLayerId : undefined,
   });
 
-  // Semantic feature payloads stay in the shell.
+  // Semantic feature payloads stay in the shell (same pattern as MapRoute).
   useEffect(() => {
     if (!isLoaded || !map || !interactive || !showFill) return;
 
@@ -1583,7 +1579,7 @@ function MapGeoJSON<
       // Features without ids still need onHover; only dedupe when id is set.
       if (featureId != null && featureId === lastFeatureId) return;
       lastFeatureId = featureId;
-      latestRef.current.onHover?.({
+      onHover?.({
         feature: feature as unknown as MapGeoJSONFeature<P>,
         longitude: e.lngLat.lng,
         latitude: e.lngLat.lat,
@@ -1593,13 +1589,13 @@ function MapGeoJSON<
 
     const handleMouseLeave = () => {
       lastFeatureId = null;
-      latestRef.current.onHover?.(null);
+      onHover?.(null);
     };
 
     const handleClick = (e: MapLibreGL.MapLayerMouseEvent) => {
       const feature = e.features?.[0];
       if (!feature) return;
-      latestRef.current.onClick?.({
+      onClick?.({
         feature: feature as unknown as MapGeoJSONFeature<P>,
         longitude: e.lngLat.lng,
         latitude: e.lngLat.lat,
@@ -1616,7 +1612,16 @@ function MapGeoJSON<
       map.off("mouseleave", fillLayerId, handleMouseLeave);
       map.off("click", fillLayerId, handleClick);
     };
-  }, [isLoaded, map, styleEpoch, fillLayerId, interactive, showFill]);
+  }, [
+    isLoaded,
+    map,
+    styleEpoch,
+    fillLayerId,
+    interactive,
+    showFill,
+    onClick,
+    onHover,
+  ]);
 
   return null;
 }
@@ -1802,11 +1807,6 @@ function MapArc<T extends MapArcDatum = MapArcDatum>({
     [data, curvature, samples],
   );
 
-  const latestRef = useRef({ data, onClick, onHover });
-  useEffect(() => {
-    latestRef.current = { data, onClick, onHover };
-  }, [data, onClick, onHover]);
-
   const sourceOptions = useMemo(() => ({ promoteId: "id" }), []);
 
   const layers = useMemo<MapLayerSpec[]>(
@@ -1841,7 +1841,7 @@ function MapArc<T extends MapArcDatum = MapArcDatum>({
     hoverLayerId: interactive ? hitLayerId : undefined,
   });
 
-  // Semantic arc lookup stays in the shell.
+  // Semantic arc lookup stays in the shell (same pattern as MapRoute).
   useEffect(() => {
     if (!isLoaded || !map || !interactive) return;
 
@@ -1850,9 +1850,7 @@ function MapArc<T extends MapArcDatum = MapArcDatum>({
     const findArc = (featureId: string | number | undefined) =>
       featureId == null
         ? undefined
-        : latestRef.current.data.find(
-            (arc) => String(arc.id) === String(featureId),
-          );
+        : data.find((arc) => String(arc.id) === String(featureId));
 
     const handleMouseMove = (e: MapLibreGL.MapLayerMouseEvent) => {
       const featureId = e.features?.[0]?.id as string | number | undefined;
@@ -1861,7 +1859,7 @@ function MapArc<T extends MapArcDatum = MapArcDatum>({
 
       const arc = findArc(featureId);
       if (arc) {
-        latestRef.current.onHover?.({
+        onHover?.({
           arc: arc as T,
           longitude: e.lngLat.lng,
           latitude: e.lngLat.lat,
@@ -1872,13 +1870,13 @@ function MapArc<T extends MapArcDatum = MapArcDatum>({
 
     const handleMouseLeave = () => {
       lastFeatureId = null;
-      latestRef.current.onHover?.(null);
+      onHover?.(null);
     };
 
     const handleClick = (e: MapLibreGL.MapLayerMouseEvent) => {
       const arc = findArc(e.features?.[0]?.id as string | number | undefined);
       if (!arc) return;
-      latestRef.current.onClick?.({
+      onClick?.({
         arc: arc as T,
         longitude: e.lngLat.lng,
         latitude: e.lngLat.lat,
@@ -1895,7 +1893,7 @@ function MapArc<T extends MapArcDatum = MapArcDatum>({
       map.off("mouseleave", hitLayerId, handleMouseLeave);
       map.off("click", hitLayerId, handleClick);
     };
-  }, [isLoaded, map, styleEpoch, hitLayerId, interactive]);
+  }, [isLoaded, map, styleEpoch, hitLayerId, interactive, data, onClick, onHover]);
 
   return null;
 }
