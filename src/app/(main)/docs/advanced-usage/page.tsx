@@ -38,15 +38,17 @@ function MyMapComponent() {
 
 const useMapCode = `import { Map, useMap } from "@/components/ui/map";
 import { useEffect } from "react";
+import type { FeatureCollection } from "geojson";
+import type { MapMouseEvent } from "maplibre-gl";
 
-// Map-wide listeners only need isLoaded — they survive style swaps.
+// Map-wide listeners only need isLoaded; they survive style swaps.
 function MapEventListener() {
   const { map, isLoaded } = useMap();
 
   useEffect(() => {
     if (!map || !isLoaded) return;
 
-    const handleClick = (e) => {
+    const handleClick = (e: MapMouseEvent) => {
       console.log("Clicked at:", e.lngLat);
     };
 
@@ -58,7 +60,7 @@ function MapEventListener() {
 }
 
 // Custom sources/layers must recreate when styleEpoch advances.
-function CustomParkLayer({ data }) {
+function CustomParkLayer({ data }: { data: FeatureCollection }) {
   const { map, isLoaded, styleEpoch } = useMap();
 
   useEffect(() => {
@@ -81,11 +83,14 @@ function CustomParkLayer({ data }) {
   return null;
 }
 
-// Usage
-<Map center={[-74, 40.7]} zoom={10}>
-  <MapEventListener />
-  <CustomParkLayer data={parks} />
-</Map>`;
+function Example({ parks }: { parks: FeatureCollection }) {
+  return (
+    <Map center={[-74, 40.7]} zoom={10}>
+      <MapEventListener />
+      <CustomParkLayer data={parks} />
+    </Map>
+  );
+}`
 
 export default function AdvancedPage() {
   const advancedSource = getExampleSource("advanced-usage-example.tsx");
