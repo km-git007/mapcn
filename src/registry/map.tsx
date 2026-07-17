@@ -106,10 +106,7 @@ function useResolvedTheme(themeProp?: "light" | "dark"): Theme {
     // Watch for document theme changes (e.g., next-themes toggling the class
     // or the data-theme attribute).
     const observer = new MutationObserver(() => {
-      const docTheme = getDocumentTheme();
-      if (docTheme) {
-        setDetectedTheme(docTheme);
-      }
+      setDetectedTheme(getDocumentTheme() ?? getSystemTheme());
     });
     observer.observe(document.documentElement, {
       attributes: true,
@@ -460,8 +457,8 @@ const Map = forwardRef<MapRef, MapProps>(function Map(
         className={cn("relative h-full w-full", className)}
       >
         {(!hasLoadEvent || loading) && <DefaultLoader />}
-        {/* SSR-safe: children render only when map is loaded on client */}
-        {mapInstance && children}
+        {/* Mount children only when map + style are safe to touch */}
+        {mapInstance && hasLoadEvent && isStyleReady && children}
       </div>
     </MapContext.Provider>
   );
@@ -1284,7 +1281,7 @@ function useMapLayers({
       setHover(null);
       map.getCanvas().style.cursor = "";
     };
-  }, [isLoaded, map, sourceId, hoverLayerId, styleEpoch, topologyKey]);
+  }, [isLoaded, map, sourceId, sourceOptions, hoverLayerId, styleEpoch, topologyKey]);
 }
 
 type MapRouteProps = {
@@ -1527,7 +1524,9 @@ function MapGeoJSON<
     [defaults.line, linePaint],
   );
   const latestRef = useRef({ onClick, onHover });
-  latestRef.current = { onClick, onHover };
+  useEffect(() => {
+    latestRef.current = { onClick, onHover };
+  }, [onClick, onHover]);
 
   const sourceOptions = useMemo(
     () => (promoteId ? { promoteId } : undefined),
@@ -1804,7 +1803,9 @@ function MapArc<T extends MapArcDatum = MapArcDatum>({
   );
 
   const latestRef = useRef({ data, onClick, onHover });
-  latestRef.current = { data, onClick, onHover };
+  useEffect(() => {
+    latestRef.current = { data, onClick, onHover };
+  }, [data, onClick, onHover]);
 
   const sourceOptions = useMemo(() => ({ promoteId: "id" }), []);
 
